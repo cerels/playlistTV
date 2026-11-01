@@ -35,10 +35,12 @@ fun ChannelRow(
     group: String,
     isFavourite: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth(),
         shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(6.dp)),
         colors = ClickableSurfaceDefaults.colors(
