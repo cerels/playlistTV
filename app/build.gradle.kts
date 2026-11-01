@@ -61,6 +61,14 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
+  // Compose for TV: focusable surfaces/lists with D-pad-correct focus handling
+  implementation(libs.androidx.tv.foundation)
+  implementation(libs.androidx.tv.material)
+  // Playback
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.exoplayer.hls)
+  implementation(libs.androidx.media3.ui)
+  implementation(libs.androidx.media3.session)
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests

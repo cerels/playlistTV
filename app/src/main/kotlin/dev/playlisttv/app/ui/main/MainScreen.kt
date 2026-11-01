@@ -1,105 +1,81 @@
 package dev.playlisttv.app.ui.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import dev.playlisttv.app.R
-import dev.playlisttv.app.data.DefaultDataRepository
+import dev.playlisttv.app.ui.components.ChannelRow
+import dev.playlisttv.app.ui.theme.BgBase
 import dev.playlisttv.app.ui.theme.PlaylistTVTheme
+import dev.playlisttv.app.ui.theme.ThemeDark
+
+/** Placeholder channel until the real M3U/EPG data layer is ported from the Rust prototype. */
+private data class SampleChannel(val number: Int, val name: String, val group: String, val favourite: Boolean)
+
+private val sampleChannels = listOf(
+    SampleChannel(1, "News Now", "News", favourite = true),
+    SampleChannel(2, "Movie Central", "Movies", favourite = false),
+    SampleChannel(3, "Sports Live", "Sports", favourite = true),
+    SampleChannel(4, "Kids Zone", "Animation;Kids", favourite = false),
+    SampleChannel(5, "Music Box", "Music", favourite = false),
+    SampleChannel(6, "Nature World", "Documentary", favourite = false),
+)
 
 @Composable
-fun MainScreen(
-  onItemClick: (NavKey) -> Unit,
-  modifier: Modifier = Modifier,
-  viewModel: MainScreenViewModel = viewModel { MainScreenViewModel(DefaultDataRepository()) },
-) {
-  val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-  when (val state = uiState) {
-    MainScreenUiState.Loading -> {
-      Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-      ) {
-        CircularProgressIndicator()
-      }
-    }
-    is MainScreenUiState.Success -> {
-      MainScreen(data = state.data, modifier = modifier)
-    }
-    is MainScreenUiState.Error -> {
-      Text("Error loading data: ${state.throwable.message}")
-    }
-  }
+fun MainScreen(onItemClick: (NavKey) -> Unit, modifier: Modifier = Modifier) {
+    ChannelsScreen(modifier = modifier)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun MainScreen(data: List<String>, modifier: Modifier = Modifier) {
-  Scaffold(
-    modifier = modifier,
-    topBar = {
-      CenterAlignedTopAppBar(
-        title = { Text(stringResource(R.string.app_name)) },
-        colors = TopAppBarDefaults.topAppBarColors(
-          containerColor = MaterialTheme.colorScheme.primaryContainer,
-          titleContentColor = MaterialTheme.colorScheme.primary
+internal fun ChannelsScreen(modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxSize().background(BgBase)) {
+        ChannelsHeader()
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            items(sampleChannels) { channel ->
+                ChannelRow(
+                    number = channel.number,
+                    name = channel.name,
+                    group = channel.group,
+                    isFavourite = channel.favourite,
+                    onClick = {},
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChannelsHeader() {
+    Column(modifier = Modifier.fillMaxWidth().background(ThemeDark).padding(horizontal = 24.dp, vertical = 20.dp)) {
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
         )
-      )
     }
-  ) { innerPadding ->
-
-    // App Content
-
-    Column(
-      modifier = Modifier.padding(innerPadding),
-      verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-      data.forEach { Greeting(it) }
-      Button(
-        modifier = Modifier.padding(24.dp, 24.dp),
-        onClick = { /* Button clicked */ }
-      ) {
-        Text("OK")
-      }
-
-      // TODO: Extend app UI with more Jetpack Compose UI elements here
-
-    }
-  }
 }
 
+@Preview(device = "id:tv_1080p")
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-  Text(
-    text = "Hello $name !",
-    modifier = modifier.padding(16.dp, 16.dp),
-    style = MaterialTheme.typography.bodyLarge
-  )
+private fun ChannelsScreenPreview() {
+    PlaylistTVTheme { ChannelsScreen() }
 }
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun MainScreenPreview() {
-  PlaylistTVTheme { MainScreen(listOf("Android")) }
-}
-
