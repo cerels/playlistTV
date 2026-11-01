@@ -9,6 +9,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import dev.playlisttv.app.ui.main.MainScreen
+import dev.playlisttv.app.ui.player.PlayerScreen
 
 @Composable
 fun MainNavigation() {
@@ -21,6 +22,9 @@ fun MainNavigation() {
       entryProvider {
         entry<Main> {
           MainScreen(onItemClick = { navKey -> backStack.add(navKey) })
+        }
+        entry<Playback> { playback ->
+          PlayerScreen(playback = playback, onBack = { backStack.removeLastOrNull() })
         }
       },
   )

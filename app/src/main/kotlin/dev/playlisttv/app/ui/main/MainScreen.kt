@@ -33,6 +33,7 @@ import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
+import dev.playlisttv.app.Playback
 import dev.playlisttv.app.R
 import dev.playlisttv.app.data.Channel
 import dev.playlisttv.app.ui.components.AddPlaylistForm
@@ -61,7 +62,10 @@ fun MainScreen(
         onToggleFavourite = viewModel::toggleFavourite,
         onToggleHidden = viewModel::toggleHiddenCategory,
         onSetShowHidden = viewModel::setShowHidden,
-        onWatch = viewModel::markWatched,
+        onWatch = { channel ->
+            viewModel.markWatched(channel)
+            onItemClick(Playback(channel.name, channel.url, channel.userAgent, channel.referrer, channel.headers))
+        },
         modifier = modifier,
     )
 }

@@ -65,14 +65,30 @@ see `../base/app`, kept around only as a reference for already-vetted parsing ru
 4. Wired into real screens: an empty-state "Add a playlist" form (downloads + parses +
    persists a real playlist), a two-pane layout (category sidebar with live counts +
    channel list), long-press to favourite a channel, long-press a category to hide/show it,
-   a header "Show/Hide hidden" toggle. Selecting a channel currently only records it to
-   "Recently watched" — no playback yet (see below).
+   a header "Show/Hide hidden" toggle. Selecting a channel records it to "Recently watched"
+   and starts playback (see below).
 5. Fixed a D-pad focus-traversal bug where Up/Down got stuck in the add-playlist text
    fields (single-line `EditText` consumes Up/Down itself for cursor-to-start/end before
    Compose's focus system sees it) — fixed via `Modifier.onPreviewKeyEvent` intercepting
    Up/Down and calling `focusManager.moveFocus()` directly. See
    `ui/components/AddPlaylistForm.kt`'s `dpadMovesFocus` for the pattern; reuse it anywhere
    else a text field sits next to other focusable controls.
+6. ExoPlayer playback wired up: selecting a channel (not long-press) navigates to a new
+   `Playback` destination (`NavigationKeys.kt`) rendering `ui/player/PlayerScreen.kt` —
+   in-app full-screen `PlayerView` via `AndroidView`, not an external player. The Rust
+   desktop prototype shelled out to an external player (MECHANICS.md "Estimated/chosen")
+   because that's the natural fit for a desktop app with no bundled player UI; on Android TV
+   there's no guarantee any external player is installed, and in-app playback is the
+   idiomatic Leanback-expected experience, so that choice didn't carry over — decided, not
+   just assumed. Per-channel `userAgent`/`referrer`/`headers` (from `Channel`, already
+   parsed) are passed through to `DefaultHttpDataSource.Factory`. HLS and other stream types
+   are handled by `DefaultMediaSourceFactory`'s automatic extension-based delegation (no
+   manual `HlsMediaSource` wiring needed since `media3-exoplayer-hls` is on the classpath).
+   Found and fixed a real bug during on-device testing: the device blocks cleartext
+   (`http://`) traffic by default, which is extremely common for IPTV stream URLs — added
+   `android:usesCleartextTraffic="true"` to the manifest. Verified with `android screen
+   capture` that video actually renders (not just "no crash"), and that Back cleanly
+   releases the player and returns to the channel list.
 
 All of the above is committed (`git log --oneline` in this directory). No uncommitted work.
 
@@ -89,28 +105,19 @@ Needs: a way to trigger guide refresh (manual button, matching "Playlist refresh
 off" decision), a grid Composable, per-channel "on now / on next" in the channel list or a
 details pane.
 
-### 2. ExoPlayer playback
-Media3/ExoPlayer dependencies are already in `app/build.gradle.kts` but nothing uses them.
-Wire up: tapping a channel (not long-press, which is favourite) should start playback —
-either full-screen in-app (`PlayerView` via `AndroidView`) or confirm that's still the
-right call vs. an external player (the Rust desktop prototype used an external player by
-choice, documented in `MECHANICS.md` "Estimated / chosen" — decide whether that choice
-carries over to TV, where in-app playback is much more idiomatic). Needs user-agent/referrer
-header support per channel (`Channel.userAgent`/`referrer`/`headers` already carried through
-parsing) and HLS/general stream handling.
-
-### 3. Multi-playlist switching UI
+### 2. Multi-playlist switching UI
 `PlaylistsViewModel.selectPlaylist(id)` and the data model already support multiple
 playlists; there's just no screen for it. Needs a small "Playlists" list (reuse
 `CategoryItem`-style rows) in the header or a side panel, plus a way to re-open the
 add-playlist form to add a 2nd/3rd playlist without it being the only option (the header
 "+ Add playlist" button already does this — just needs a playlist switcher alongside it).
 
-### 4. Smaller polish items (bundle into whichever task above makes sense, or their own pass)
+### 3. Smaller polish items (bundle into whichever task above makes sense, or their own pass)
 - Replace the placeholder generated banner (`res/drawable-xhdpi/tv_banner.png`, made with a
   quick PIL script) with something more considered.
 - Decide on a real app icon (still the Compose-template default).
 - Error/empty states: what the channel list shows when a playlist has 0 channels, what a
   failed playlist download looks like beyond the current inline error text.
-- Consider whether "Recently watched" should also record something when playback actually
-  starts (task 2) rather than only on channel selection, once playback exists.
+- Player polish: remember/resume last channel, a visible channel-switch affordance from
+  inside playback (currently Back exits to the list rather than jumping to the next/prev
+  channel), aspect-ratio/resize controls.
