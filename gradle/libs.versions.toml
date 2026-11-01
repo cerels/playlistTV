@@ -16,6 +16,10 @@ lifecycleViewmodelNav3 = "2.10.0"
 androidxTvFoundation = "1.0.0"
 androidxTvMaterial = "1.1.0"
 media3 = "1.11.1"
+kotlinxSerializationJson = "1.11.0"
+okhttp = "4.12.0"
+kxml2 = "2.2.2"
+desugarJdkLibs = "2.1.5"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -45,6 +49,10 @@ androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", versi
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

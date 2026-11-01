@@ -24,6 +24,8 @@ android {
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
+    // minSdk 23 needs this for java.time (native support starts at API 26).
+    isCoreLibraryDesugaringEnabled = true
   }
   buildFeatures {
     compose = true
@@ -69,6 +71,9 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer.hls)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
+  // Data layer: playlist/guide parsing, saved state, downloads
+  implementation(libs.kotlinx.serialization.json)
+  implementation(libs.okhttp)
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
   // Instrumented tests
@@ -78,6 +83,8 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  // Provides org.xmlpull.v1 for local (JVM) unit tests; the device uses Android's built-in impl.
+  testImplementation(libs.kxml2)
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
@@ -89,4 +96,6 @@ dependencies {
   implementation(libs.androidx.navigation3.ui)
   implementation(libs.androidx.navigation3.runtime)
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
+  coreLibraryDesugaring(libs.desugar.jdk.libs)
 }
