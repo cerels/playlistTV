@@ -17,7 +17,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
@@ -40,6 +48,7 @@ fun AddPlaylistForm(
 ) {
     var name by remember { mutableStateOf("") }
     var source by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
 
     Column(
         modifier = modifier
@@ -54,7 +63,7 @@ fun AddPlaylistForm(
             onValueChange = { name = it },
             label = { Text("Name") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().dpadMovesFocus(focusManager),
             colors = fieldColors(),
         )
         OutlinedTextField(
@@ -62,7 +71,7 @@ fun AddPlaylistForm(
             onValueChange = { source = it },
             label = { Text("Playlist URL or file path") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().dpadMovesFocus(focusManager),
             colors = fieldColors(),
         )
         if (error != null) {
@@ -82,6 +91,30 @@ fun AddPlaylistForm(
                 }
             }
         }
+    }
+}
+
+/**
+ * In a single-line text field, Android's own key handling treats D-pad
+ * Up/Down as "move the cursor to the start/end of the text" and consumes the
+ * key before Compose's focus-traversal system ever sees it — so a remote's
+ * Down button leaves you stuck in the field instead of reaching the next
+ * one. Intercept it in the preview (tunneling) phase and drive focus
+ * movement ourselves; Left/Right are untouched so in-field cursor movement
+ * still works.
+ */
+private fun Modifier.dpadMovesFocus(focusManager: FocusManager): Modifier = onPreviewKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+    when (event.key) {
+        Key.DirectionDown -> {
+            focusManager.moveFocus(FocusDirection.Down)
+            true
+        }
+        Key.DirectionUp -> {
+            focusManager.moveFocus(FocusDirection.Up)
+            true
+        }
+        else -> false
     }
 }
 
