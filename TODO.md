@@ -108,13 +108,27 @@ see `../base/app`, kept around only as a reference for already-vetted parsing ru
    channel row behind it. Fixed by making it a full content swap (same pattern as the
    add-playlist form and the Guide screen), which traps focus correctly; re-verified.
 
-Items 1–6 are committed (`git log --oneline` in this directory). Items 7–8 (this chat) are
-**not yet committed** — ask before committing.
+Items 1–8 are committed (`git log --oneline` in this directory).
 
-9. Polish pass (this chat; **not yet committed, and not built/run on-device** — this session's
-   container had no Android SDK and no network path to `dl.google.com`/`maven.google.com`
-   (blocked by the egress proxy), so none of this was compiled or tested on the real device.
-   Review the diff and build/run on the Google TV Streamer before trusting it):
+9. Polish pass (committed; **built and verified on the Google TV Streamer** — the session that
+   wrote it had no Android SDK and no network path to `dl.google.com`/`maven.google.com`, so it
+   went in uncompiled and untested. A later on-device pass found and fixed three real bugs
+   before committing:
+   - `PlayerScreen.kt`'s Up/Down were swapped: Up tuned to the *next* channel and Down to the
+     *previous* one, backwards from both the write-up below and normal list-navigation
+     convention. Fixed.
+   - On playback failure, `PlayerView`'s own native controller (`useController = true`) stayed
+     visible and focusable underneath the custom "Try again"/"Back to channels" overlay, so it
+     silently stole D-pad focus and `DPAD_CENTER` — the buttons were unreachable. Fixed by
+     hiding the controller (`useController = errorMessage == null`) and moving focus onto
+     "Try again" via a `FocusRequester` when an error appears.
+   - The same error state also swallowed `DPAD_LEFT`/`RIGHT` for resize-mode cycling
+     unconditionally, so focus could never move from "Try again" to "Back to channels" (laid
+     out to its right) — the second button was unreachable by D-pad. Fixed by only intercepting
+     Up/Down/Left/Right for tuning/resize while `errorMessage == null`.
+   The rest (tab-switch perf fix, resume-last-channel, empty-state copy, icon/banner) matched
+   the write-up below as-is, confirmed on-device with a synthetic 43-channel/20-category test
+   playlist.):
    - Fixed a real perf bug behind "switching category tabs is slow": `items(groups)` in
      `ChannelsBody` (`ui/main/MainScreen.kt`) reads `selectedCategory` to highlight the active
      row, so *every* category row recomposed on each tab switch, and each one recomputed

@@ -20,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -113,6 +115,13 @@ fun PlayerScreen(
 
     var resizeModeIndex by remember(playback) { mutableIntStateOf(0) }
     var hintLabel by remember(playback) { mutableStateOf<String?>(playback.name) }
+    val tryAgainFocusRequester = remember { FocusRequester() }
+
+    // PlayerView's own controller is focusable and otherwise steals both D-pad focus and
+    // DPAD_CENTER from the "Try again"/"Back to channels" buttons drawn on top of it.
+    LaunchedEffect(errorMessage) {
+        if (errorMessage != null) tryAgainFocusRequester.requestFocus()
+    }
 
     // Restarts every time hintLabel is set to something new (including the same text twice in a
     // row, since LaunchedEffect's key is the state read, not object identity of the assignment).
@@ -129,14 +138,17 @@ fun PlayerScreen(
             .fillMaxSize()
             .background(BgBase)
             .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Only hijack D-pad for tuning/resize during normal playback: with an error shown,
+                // Left/Right must reach normal focus traversal instead, or "Back to channels" (to
+                // the right of "Try again" in the same Row) would never be reachable.
+                if (event.type != KeyEventType.KeyDown || errorMessage != null) return@onPreviewKeyEvent false
                 when (event.key) {
                     Key.DirectionUp -> {
-                        onSwitchChannel(1)
+                        onSwitchChannel(-1)
                         true
                     }
                     Key.DirectionDown -> {
-                        onSwitchChannel(-1)
+                        onSwitchChannel(1)
                         true
                     }
                     Key.DirectionLeft, Key.DirectionRight -> {
@@ -159,6 +171,8 @@ fun PlayerScreen(
             update = { view ->
                 view.player = exoPlayer
                 view.resizeMode = ResizeModes[resizeModeIndex].first
+                view.useController = errorMessage == null
+                if (errorMessage != null) view.hideController()
             },
         )
         if (isBuffering && errorMessage == null) {
@@ -196,6 +210,7 @@ fun PlayerScreen(
                                 isBuffering = true
                                 retryToken++
                             },
+                            modifier = Modifier.focusRequester(tryAgainFocusRequester),
                             colors = ButtonDefaults.colors(containerColor = ThemeHighlight, contentColor = White),
                         ) {
                             Text("Try again")
