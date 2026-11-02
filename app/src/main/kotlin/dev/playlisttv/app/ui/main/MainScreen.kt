@@ -1,5 +1,6 @@
 package dev.playlisttv.app.ui.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,8 @@ import dev.playlisttv.app.data.Channel
 import dev.playlisttv.app.ui.components.AddPlaylistForm
 import dev.playlisttv.app.ui.components.CategoryItem
 import dev.playlisttv.app.ui.components.ChannelRow
+import dev.playlisttv.app.ui.components.PlaylistSwitcher
+import dev.playlisttv.app.ui.guide.GuideScreen
 import dev.playlisttv.app.ui.theme.BgBase
 import dev.playlisttv.app.ui.theme.Dim
 import dev.playlisttv.app.ui.theme.ThemeDark
@@ -66,6 +69,9 @@ fun MainScreen(
             viewModel.markWatched(channel)
             onItemClick(Playback(channel.name, channel.url, channel.userAgent, channel.referrer, channel.headers))
         },
+        onSelectPlaylist = viewModel::selectPlaylist,
+        onLoadGuide = { viewModel.loadGuide() },
+        onRefreshGuide = { viewModel.loadGuide(forceRefresh = true) },
         modifier = modifier,
     )
 }
@@ -79,29 +85,73 @@ internal fun ChannelsScreen(
     onToggleHidden: (String) -> Unit,
     onSetShowHidden: (Boolean) -> Unit,
     onWatch: (Channel) -> Unit,
+    onSelectPlaylist: (Long) -> Unit = {},
+    onLoadGuide: () -> Unit = {},
+    onRefreshGuide: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var showSwitcher by rememberSaveable(state.currentPlaylistId) { mutableStateOf(false) }
+    var showGuide by rememberSaveable(state.currentPlaylistId) { mutableStateOf(false) }
+    BackHandler(enabled = showSwitcher) { showSwitcher = false }
+    BackHandler(enabled = showGuide) { showGuide = false }
+
     Column(modifier = modifier.fillMaxSize().background(BgBase)) {
         ChannelsHeader(
             playlistName = state.saved.playlists.find { it.id == state.currentPlaylistId }?.name,
             hasPlaylists = state.saved.playlists.isNotEmpty(),
+            showSwitcherButton = state.saved.playlists.size > 1,
             showHidden = state.saved.settings.showHidden,
             onAddPlaylist = { onShowAddForm(true) },
             onToggleShowHidden = { onSetShowHidden(!state.saved.settings.showHidden) },
+            onOpenSwitcher = { showSwitcher = true },
+            onOpenGuide = { showGuide = true; onLoadGuide() },
         )
-        when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        Box(Modifier.fillMaxSize()) {
+            when {
+                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                state.showAddForm -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                    AddPlaylistForm(
+                        busy = state.busy,
+                        error = state.error,
+                        onSubmit = onAddPlaylist,
+                        onCancel = if (state.saved.playlists.isNotEmpty()) ({ onShowAddForm(false) }) else null,
+                    )
+                }
+                // A full content swap, not a layered overlay: a translucent Box on top of ChannelsBody
+                // doesn't stop D-pad focus search from reaching through it into the list underneath
+                // (confirmed on-device — Down from the switcher's list landed on a channel row behind it).
+                showSwitcher -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    PlaylistSwitcher(
+                        playlists = state.saved.playlists,
+                        currentId = state.currentPlaylistId,
+                        onSelect = { id ->
+                            onSelectPlaylist(id)
+                            showSwitcher = false
+                        },
+                    )
+                }
+                showGuide -> {
+                    val pid = state.currentPlaylistId
+                    val showHidden = state.saved.settings.showHidden
+                    val guideChannels = remember(state.channels, state.saved, pid) {
+                        if (showHidden) state.channels else state.channels.filter { pid == null || !state.saved.isHidden(pid, it.group) }
+                    }
+                    GuideScreen(
+                        channels = guideChannels,
+                        guide = state.guide.takeIf { state.guidePlaylistId == pid },
+                        loading = state.guideLoading,
+                        error = state.guideError,
+                        isFavourite = { state.saved.isFav(it.key) },
+                        onWatch = onWatch,
+                        onToggleFavourite = onToggleFavourite,
+                        onRefresh = onRefreshGuide,
+                        onBack = { showGuide = false },
+                    )
+                }
+                else -> ChannelsBody(state, onToggleFavourite, onToggleHidden, onWatch)
             }
-            state.showAddForm -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-                AddPlaylistForm(
-                    busy = state.busy,
-                    error = state.error,
-                    onSubmit = onAddPlaylist,
-                    onCancel = if (state.saved.playlists.isNotEmpty()) ({ onShowAddForm(false) }) else null,
-                )
-            }
-            else -> ChannelsBody(state, onToggleFavourite, onToggleHidden, onWatch)
         }
     }
 }
@@ -210,9 +260,12 @@ private fun ChannelsBody(
 private fun ChannelsHeader(
     playlistName: String?,
     hasPlaylists: Boolean,
+    showSwitcherButton: Boolean,
     showHidden: Boolean,
     onAddPlaylist: () -> Unit,
     onToggleShowHidden: () -> Unit,
+    onOpenSwitcher: () -> Unit,
+    onOpenGuide: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().background(ThemeDark).padding(horizontal = 24.dp, vertical = 16.dp),
@@ -229,6 +282,16 @@ private fun ChannelsHeader(
             if (hasPlaylists) {
                 OutlinedButton(onClick = onToggleShowHidden) {
                     Text(if (showHidden) "Hide hidden" else "Show hidden")
+                }
+            }
+            if (showSwitcherButton) {
+                OutlinedButton(onClick = onOpenSwitcher) {
+                    Text("Playlists")
+                }
+            }
+            if (hasPlaylists) {
+                OutlinedButton(onClick = onOpenGuide) {
+                    Text("Guide")
                 }
             }
             Button(onClick = onAddPlaylist, colors = ButtonDefaults.colors(containerColor = ThemeHighlight)) {

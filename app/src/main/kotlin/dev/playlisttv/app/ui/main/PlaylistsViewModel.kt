@@ -5,9 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.playlisttv.app.data.AppStore
 import dev.playlisttv.app.data.Channel
+import dev.playlisttv.app.data.Clock
+import dev.playlisttv.app.data.Guide
+import dev.playlisttv.app.data.GuideWindow
 import dev.playlisttv.app.data.PlaylistCfg
 import dev.playlisttv.app.data.SavedState
+import dev.playlisttv.app.data.parseGuide
 import dev.playlisttv.app.data.parsePlaylist
+import dev.playlisttv.app.data.ungzipIfNeeded
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +30,11 @@ data class ChannelsUiState(
     val currentPlaylistId: Long? = null,
     val showAddForm: Boolean = false,
     val error: String? = null,
+    val guideLoading: Boolean = false,
+    val guide: Guide? = null,
+    /** Which playlist [guide] was loaded for, so a stale guide never renders against a newly selected playlist. */
+    val guidePlaylistId: Long? = null,
+    val guideError: String? = null,
 )
 
 /**
@@ -101,6 +111,53 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(busy = false, error = e.message ?: "Could not load the playlist") }
+            }
+        }
+    }
+
+    /**
+     * Downloads (or reuses the on-disk cache of) the current playlist's guide and parses it,
+     * restricted to the channels actually in that playlist (see [Guide.channelId]). No
+     * auto-refresh on start (MECHANICS.md "Estimated/chosen") — this only runs when the Guide
+     * screen is opened, and skips the fetch entirely if already loaded for this playlist unless
+     * [forceRefresh] is set (the Guide screen's own "Refresh guide" button).
+     */
+    fun loadGuide(forceRefresh: Boolean = false) {
+        val pid = _uiState.value.currentPlaylistId ?: return
+        val cfg = _uiState.value.saved.playlists.find { it.id == pid } ?: return
+        val source = cfg.guideSource
+        if (source.isBlank()) {
+            _uiState.update { it.copy(guide = null, guidePlaylistId = pid, guideError = "This playlist has no guide URL.") }
+            return
+        }
+        if (!forceRefresh && _uiState.value.guidePlaylistId == pid && _uiState.value.guide != null) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(guideLoading = true, guideError = null) }
+            try {
+                val cacheFile = AppStore.guideCache(dir, pid)
+                val bytes = withContext(Dispatchers.IO) {
+                    if (forceRefresh || !cacheFile.exists()) {
+                        val fresh = ungzipIfNeeded(AppStore.fetch(source))
+                        cacheFile.parentFile?.mkdirs()
+                        cacheFile.writeBytes(fresh)
+                        fresh
+                    } else {
+                        cacheFile.readBytes()
+                    }
+                }
+                val wanted = buildSet {
+                    for (c in _uiState.value.channels) {
+                        if (c.tvgId.isNotEmpty()) add(c.tvgId)
+                        if (c.name.isNotEmpty()) add(c.name)
+                        if (c.tvgName.isNotEmpty()) add(c.tvgName)
+                    }
+                }
+                val settings = _uiState.value.saved.settings
+                val window = GuideWindow(settings.keepPastDays, settings.futureDays, cfg.epgShiftHours, Clock.now())
+                val guide = withContext(Dispatchers.Default) { parseGuide(bytes, wanted, window) }
+                _uiState.update { it.copy(guide = guide, guidePlaylistId = pid, guideLoading = false) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(guideLoading = false, guideError = e.message ?: "Could not load the guide") }
             }
         }
     }

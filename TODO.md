@@ -89,30 +89,31 @@ see `../base/app`, kept around only as a reference for already-vetted parsing ru
    `android:usesCleartextTraffic="true"` to the manifest. Verified with `android screen
    capture` that video actually renders (not just "no crash"), and that Back cleanly
    releases the player and returns to the channel list.
+7. EPG / TV guide grid screen (`ui/guide/GuideScreen.kt`): a header "Guide" button loads
+   (and caches to `AppStore.guideCache`) the current playlist's XMLTV guide via a new
+   `PlaylistsViewModel.loadGuide()` (manual-refresh only, matching "Playlist refresh on
+   start: off"), then renders a synced-scroll timeline grid — channel names in a fixed left
+   column, programme blocks positioned by absolute offset (not simple flow, so gaps between
+   programmes line up correctly across channels), a pinned-to-viewport current-time marker,
+   titles hidden under ~90dp (TV-scaled from the original's 12px/min rule), and a "No guide
+   data" placeholder per channel with no match. Selecting a block tunes/plays that channel
+   like a normal channel row; long-press favourites it. Verified on-device with a synthetic
+   XMLTV file (live-highlight, narrow-block title-hiding, D-pad scroll-into-view, tune and
+   playback all confirmed working).
+8. Multi-playlist switcher (`ui/components/PlaylistSwitcher.kt`): a header "Playlists"
+   button (shown once ≥2 playlists exist) opens a list wired to the already-existing
+   `PlaylistsViewModel.selectPlaylist(id)`. First version rendered the list as a translucent
+   overlay on top of the channel list, which on-device testing caught as a real D-pad bug —
+   focus search isn't blocked by the scrim, so Down/Center could leak through and act on a
+   channel row behind it. Fixed by making it a full content swap (same pattern as the
+   add-playlist form and the Guide screen), which traps focus correctly; re-verified.
 
-All of the above is committed (`git log --oneline` in this directory). No uncommitted work.
+Items 1–6 are committed (`git log --oneline` in this directory). Items 7–8 (this chat) are
+**not yet committed** — ask before committing.
 
 ## Not started — each is meant to be its own chat
 
-### 1. EPG / TV guide grid screen
-Port the guide-grid rules already documented in `MECHANICS.md` ("Guide grid"): a timeline
-(12 px/min desktop-scale → pick a TV-appropriate scale), 65px-equivalent rows, titles
-hidden when a block is too narrow, current-time marker. `data/Guide.kt` already has the
-parsed `Programme`/`Guide` data and `onAir()`; this task is almost entirely new UI plus
-wiring a "download and parse the guide for the current playlist" action into
-`PlaylistsViewModel` (the guide isn't fetched anywhere yet — only the playlist is).
-Needs: a way to trigger guide refresh (manual button, matching "Playlist refresh on start:
-off" decision), a grid Composable, per-channel "on now / on next" in the channel list or a
-details pane.
-
-### 2. Multi-playlist switching UI
-`PlaylistsViewModel.selectPlaylist(id)` and the data model already support multiple
-playlists; there's just no screen for it. Needs a small "Playlists" list (reuse
-`CategoryItem`-style rows) in the header or a side panel, plus a way to re-open the
-add-playlist form to add a 2nd/3rd playlist without it being the only option (the header
-"+ Add playlist" button already does this — just needs a playlist switcher alongside it).
-
-### 3. Smaller polish items (bundle into whichever task above makes sense, or their own pass)
+### 1. Smaller polish items (bundle into whichever task above makes sense, or their own pass)
 - Replace the placeholder generated banner (`res/drawable-xhdpi/tv_banner.png`, made with a
   quick PIL script) with something more considered.
 - Decide on a real app icon (still the Compose-template default).
