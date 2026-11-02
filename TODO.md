@@ -108,17 +108,51 @@ see `../base/app`, kept around only as a reference for already-vetted parsing ru
    channel row behind it. Fixed by making it a full content swap (same pattern as the
    add-playlist form and the Guide screen), which traps focus correctly; re-verified.
 
-Items 1–6 are committed (`git log --oneline` in this directory). Items 7–8 (this chat) are
-**not yet committed** — ask before committing.
+Items 1–8 are committed (`git log --oneline` in this directory).
+
+9. Polish pass (committed; **built and verified on the Google TV Streamer** — the session that
+   wrote it had no Android SDK and no network path to `dl.google.com`/`maven.google.com`, so it
+   went in uncompiled and untested. A later on-device pass found and fixed three real bugs
+   before committing:
+   - `PlayerScreen.kt`'s Up/Down were swapped: Up tuned to the *next* channel and Down to the
+     *previous* one, backwards from both the write-up below and normal list-navigation
+     convention. Fixed.
+   - On playback failure, `PlayerView`'s own native controller (`useController = true`) stayed
+     visible and focusable underneath the custom "Try again"/"Back to channels" overlay, so it
+     silently stole D-pad focus and `DPAD_CENTER` — the buttons were unreachable. Fixed by
+     hiding the controller (`useController = errorMessage == null`) and moving focus onto
+     "Try again" via a `FocusRequester` when an error appears.
+   - The same error state also swallowed `DPAD_LEFT`/`RIGHT` for resize-mode cycling
+     unconditionally, so focus could never move from "Try again" to "Back to channels" (laid
+     out to its right) — the second button was unreachable by D-pad. Fixed by only intercepting
+     Up/Down/Left/Right for tuning/resize while `errorMessage == null`.
+   The rest (tab-switch perf fix, resume-last-channel, empty-state copy, icon/banner) matched
+   the write-up below as-is, confirmed on-device with a synthetic 43-channel/20-category test
+   playlist.):
+   - Fixed a real perf bug behind "switching category tabs is slow": `items(groups)` in
+     `ChannelsBody` (`ui/main/MainScreen.kt`) reads `selectedCategory` to highlight the active
+     row, so *every* category row recomposed on each tab switch, and each one recomputed
+     `state.channels.count { it.group == g }` — a full scan of the whole playlist, per row,
+     per switch (O(channels × groups) every keypress). Now a `groupCounts` map is built once
+     per channel-list change and each row just looks itself up.
+   - Resume-last-channel: reopening the app (or switching playlists) now defaults the category
+     sidebar to "Recently watched" instead of "All channels" when there's a channel to resume
+     to, rather than auto-tuning a stream on cold start.
+   - Context-aware empty-state copy per category (favourites/recent/this-category/whole-playlist)
+     instead of one generic "No channels here."
+   - Player: failures now show "Try again" (re-prepares ExoPlayer in place) and "Back to
+     channels" buttons instead of just inline text; Up/Down tune the previous/next channel
+     in place (by `pos`, skipping hidden categories, replacing the backstack entry rather than
+     pushing a new one so Back still returns straight to the channel list) with a transient
+     "Now playing: …" label since there's no visible list during playback; Left/Right cycle
+     the picture's resize mode (Fit/Zoom/Stretch) with the same transient-label treatment.
+     `Playback` (`NavigationKeys.kt`) now also carries `channelKey` to look the channel back up.
+   - Replaced the stock Compose-template adaptive icon (`drawable/ic_launcher_background.xml`,
+     `ic_launcher_foreground.xml`) and the placeholder `tv_banner.png` with a considered mark: a
+     rounded teal-gradient tile (`ThemeLight`→`ThemeHighlight`) with a white play triangle on
+     `ThemeDark` — the same visual grammar as the channel-initials badge `ChannelRow` already
+     draws per channel, rather than an unrelated generic glyph. Legacy pre-API26 mipmap webp
+     fallbacks regenerated to match (unexercised on the actual API 34 test device, which uses
+     the adaptive XML).
 
 ## Not started — each is meant to be its own chat
-
-### 1. Smaller polish items (bundle into whichever task above makes sense, or their own pass)
-- Replace the placeholder generated banner (`res/drawable-xhdpi/tv_banner.png`, made with a
-  quick PIL script) with something more considered.
-- Decide on a real app icon (still the Compose-template default).
-- Error/empty states: what the channel list shows when a playlist has 0 channels, what a
-  failed playlist download looks like beyond the current inline error text.
-- Player polish: remember/resume last channel, a visible channel-switch affordance from
-  inside playback (currently Back exits to the list rather than jumping to the next/prev
-  channel), aspect-ratio/resize controls.
