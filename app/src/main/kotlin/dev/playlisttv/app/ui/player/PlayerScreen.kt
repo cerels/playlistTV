@@ -2,19 +2,31 @@ package dev.playlisttv.app.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
@@ -23,11 +35,25 @@ import androidx.media3.common.Player as Media3Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import dev.playlisttv.app.Playback
 import dev.playlisttv.app.ui.theme.BgBase
+import dev.playlisttv.app.ui.theme.BgSurfaceElevated
+import dev.playlisttv.app.ui.theme.ThemeHighlight
 import dev.playlisttv.app.ui.theme.White
+import kotlinx.coroutines.delay
+import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.OutlinedButton
 import androidx.tv.material3.Text
+
+private val ResizeModes = listOf(
+    AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit",
+    AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Zoom",
+    AspectRatioFrameLayout.RESIZE_MODE_FILL to "Stretch",
+)
 
 /**
  * In-app full-screen playback via ExoPlayer/`PlayerView`. The Rust desktop prototype shelled
@@ -35,14 +61,26 @@ import androidx.tv.material3.Text
  * for a desktop app with no bundled player UI of its own — on Android TV there's no guarantee
  * any external player is installed, and in-app playback is the idiomatic, Leanback-expected
  * experience (the system remote drives it directly), so that choice doesn't carry over.
+ *
+ * Up/Down tune the previous/next channel in place (no list is visible during playback, so a
+ * transient label stands in for one); Left/Right cycle the picture's resize mode. Both are
+ * intercepted here, in the tunneling phase, before [PlayerView]'s own embedded View can consume
+ * them — the same pattern [dev.playlisttv.app.ui.components.AddPlaylistForm] uses for D-pad vs.
+ * a text field, needed again here because an `AndroidView` dispatches key events itself.
  */
 @Composable
-fun PlayerScreen(playback: Playback, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun PlayerScreen(
+    playback: Playback,
+    onBack: () -> Unit,
+    onSwitchChannel: (delta: Int) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     var errorMessage by remember(playback) { mutableStateOf<String?>(null) }
     var isBuffering by remember(playback) { mutableStateOf(true) }
+    var retryToken by remember(playback) { mutableIntStateOf(0) }
 
-    val exoPlayer = remember(playback) {
+    val exoPlayer = remember(playback, retryToken) {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(playback.userAgent.ifBlank { null })
             .setDefaultRequestProperties(requestHeaders(playback))
@@ -73,9 +111,43 @@ fun PlayerScreen(playback: Playback, onBack: () -> Unit, modifier: Modifier = Mo
         }
     }
 
+    var resizeModeIndex by remember(playback) { mutableIntStateOf(0) }
+    var hintLabel by remember(playback) { mutableStateOf<String?>(playback.name) }
+
+    // Restarts every time hintLabel is set to something new (including the same text twice in a
+    // row, since LaunchedEffect's key is the state read, not object identity of the assignment).
+    LaunchedEffect(hintLabel) {
+        if (hintLabel == null) return@LaunchedEffect
+        delay(2000)
+        hintLabel = null
+    }
+
     BackHandler(onBack = onBack)
 
-    Box(modifier = modifier.fillMaxSize().background(BgBase)) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(BgBase)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionUp -> {
+                        onSwitchChannel(1)
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        onSwitchChannel(-1)
+                        true
+                    }
+                    Key.DirectionLeft, Key.DirectionRight -> {
+                        resizeModeIndex = (resizeModeIndex + 1) % ResizeModes.size
+                        hintLabel = ResizeModes[resizeModeIndex].second
+                        true
+                    }
+                    else -> false
+                }
+            },
+    ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
@@ -84,17 +156,55 @@ fun PlayerScreen(playback: Playback, onBack: () -> Unit, modifier: Modifier = Mo
                     useController = true
                 }
             },
-            update = { it.player = exoPlayer },
+            update = { view ->
+                view.player = exoPlayer
+                view.resizeMode = ResizeModes[resizeModeIndex].first
+            },
         )
         if (isBuffering && errorMessage == null) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+        }
+        hintLabel?.let { label ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(24.dp)
+                    .background(BgSurfaceElevated, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+            ) {
+                Text(text = label, color = White, style = MaterialTheme.typography.titleMedium)
+            }
         }
         errorMessage?.let { message ->
             Box(
                 modifier = Modifier.fillMaxSize().padding(32.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "Couldn't play ${playback.name}: $message", color = White)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    Text(
+                        text = "Couldn't play ${playback.name}: $message",
+                        color = White,
+                        textAlign = TextAlign.Center,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Button(
+                            onClick = {
+                                errorMessage = null
+                                isBuffering = true
+                                retryToken++
+                            },
+                            colors = ButtonDefaults.colors(containerColor = ThemeHighlight, contentColor = White),
+                        ) {
+                            Text("Try again")
+                        }
+                        OutlinedButton(onClick = onBack) {
+                            Text("Back to channels")
+                        }
+                    }
+                }
             }
         }
     }

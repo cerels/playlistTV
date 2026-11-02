@@ -13,4 +13,6 @@ data class Playback(
     val userAgent: String,
     val referrer: String,
     val headers: String,
+    /** [dev.playlisttv.app.data.Channel.key], so the player can look the channel back up to tune the next/previous one. */
+    val channelKey: String,
 ) : NavKey

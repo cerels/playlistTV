@@ -67,7 +67,7 @@ fun MainScreen(
         onSetShowHidden = viewModel::setShowHidden,
         onWatch = { channel ->
             viewModel.markWatched(channel)
-            onItemClick(Playback(channel.name, channel.url, channel.userAgent, channel.referrer, channel.headers))
+            onItemClick(Playback(channel.name, channel.url, channel.userAgent, channel.referrer, channel.headers, channel.key))
         },
         onSelectPlaylist = viewModel::selectPlaylist,
         onLoadGuide = { viewModel.loadGuide() },
@@ -163,8 +163,14 @@ private fun ChannelsBody(
     onToggleHidden: (String) -> Unit,
     onWatch: (Channel) -> Unit,
 ) {
-    var selectedCategory by rememberSaveable(state.currentPlaylistId) { mutableStateOf(CAT_ALL) }
     val pid = state.currentPlaylistId
+    // Reopening the app lands back on "Recently watched" instead of "All channels" whenever
+    // there's a channel to resume to — the TV-remote expectation of coming back to where you
+    // left off, without the cost/surprise of auto-tuning a stream on cold start.
+    var selectedCategory by rememberSaveable(state.currentPlaylistId) {
+        val hasRecent = pid != null && !state.saved.recent[pid].isNullOrEmpty()
+        mutableStateOf(if (hasRecent) CAT_RECENT else CAT_ALL)
+    }
     val showHidden = state.saved.settings.showHidden
     fun isHidden(group: String) = pid != null && state.saved.isHidden(pid, group)
 
@@ -180,12 +186,19 @@ private fun ChannelsBody(
         keys.mapNotNull { k -> state.channels.find { it.key == k } }
     }
     val favChannels = remember(visibleChannels, state.saved) { visibleChannels.filter { state.saved.isFav(it.key) } }
+    // Counted once per channel-list change rather than per category row: items(groups) reads
+    // selectedCategory to highlight the active row, so every row recomposes on each tab switch,
+    // and a per-row `state.channels.count { it.group == g }` would re-scan the whole playlist
+    // for every row, every switch — the actual cause of "switching tabs is slow" on big playlists.
+    val groupCounts = remember(state.channels) { state.channels.groupingBy { it.group }.eachCount() }
 
-    val shown = when (selectedCategory) {
-        CAT_ALL -> visibleChannels
-        CAT_FAVOURITES -> favChannels
-        CAT_RECENT -> recentChannels
-        else -> visibleChannels.filter { it.group == selectedCategory }
+    val shown = remember(selectedCategory, visibleChannels, favChannels, recentChannels) {
+        when (selectedCategory) {
+            CAT_ALL -> visibleChannels
+            CAT_FAVOURITES -> favChannels
+            CAT_RECENT -> recentChannels
+            else -> visibleChannels.filter { it.group == selectedCategory }
+        }
     }
 
     Row(modifier = Modifier.fillMaxSize()) {
@@ -223,10 +236,10 @@ private fun ChannelsBody(
                     )
                 }
             }
-            items(groups) { g ->
+            items(groups, key = { it }) { g ->
                 CategoryItem(
                     label = g,
-                    count = state.channels.count { it.group == g },
+                    count = groupCounts[g] ?: 0,
                     selected = selectedCategory == g,
                     hidden = isHidden(g),
                     onClick = { selectedCategory = g },
@@ -240,7 +253,13 @@ private fun ChannelsBody(
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (shown.isEmpty()) {
-                item { Text("No channels here.", color = Dim) }
+                val message = when (selectedCategory) {
+                    CAT_ALL -> "This playlist has no channels."
+                    CAT_FAVOURITES -> "No favourites yet. Long-press a channel to add one."
+                    CAT_RECENT -> "Watch a channel and it'll show up here."
+                    else -> "No channels in this category."
+                }
+                item { Text(message, color = Dim) }
             }
             items(shown, key = { it.key + it.pos }) { channel ->
                 ChannelRow(
